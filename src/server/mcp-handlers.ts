@@ -5,6 +5,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { configManager } from '../config/index.js';
 import { HandlerExecutor } from '../handlers/executor.js';
+import { handlerResolver } from '../handlers/resolver.js';
 import { HookQuery } from '../query/index.js';
 import { packageManager } from '../packages/manager.js';
 import { ClaudeHandlerImporter } from '../config/claude-import.js';
@@ -36,7 +37,7 @@ export function createMCPServer(): Server {
           inputSchema: {
             type: 'object',
             properties: {
-              action: { type: 'string', enum: ['list', 'add', 'remove', 'enable', 'disable', 'test', 'import'], description: 'Action: list (show all), add (create new), remove (delete), enable/disable (toggle), test (run with test data), import (from Claude)' },
+              action: { type: 'string', enum: ['list', 'add', 'remove', 'enable', 'disable', 'test', 'import'], description: 'Action: list (show all), add (create new), remove (delete), enable/disable (toggle globally), test (run with test data), import (from Claude)' },
               name: { type: 'string', description: 'Handler name (required for add, remove, enable, disable, test)' },
               hooks: { type: 'array', items: { type: 'string' }, description: 'Hook types to handle (required for add), e.g., ["PreToolUse", "PostToolUse"]' },
               type: { type: 'string', enum: ['velcro', 'command', 'script'], default: 'velcro', description: 'Handler type: velcro (JS code), command (shell), or script (file)' },
@@ -110,6 +111,19 @@ export function createMCPServer(): Server {
               detailed: { type: 'boolean', default: false, description: 'Include detailed breakdown' },
               handler_name: { type: 'string', description: 'Filter stats for specific handler' }
             }
+          }
+        },
+        {
+          name: 'session',
+          description: 'Control hooks for the current session. Examples: {"action": "enable", "name": "logger"}, {"action": "disable", "name": "security-check"}, {"action": "status"}',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              action: { type: 'string', enum: ['enable', 'disable', 'status', 'clear'], description: 'Action: enable/disable a hook for session, status (show current state), clear (reset session overrides)' },
+              name: { type: 'string', description: 'Handler name (required for enable/disable)' },
+              session_id: { type: 'string', description: 'Session ID (optional, uses current session if not provided)' }
+            },
+            required: ['action']
           }
         }
       ]
@@ -551,6 +565,81 @@ ${stats.lastError ? `Last Error: ${stats.lastError}` : ''}`;
         
         default:
           throw new Error(`Unknown monitor type: ${type}`);
+      }
+    }
+    
+    case 'session': {
+      const sessionArgs = args as { action: string; name?: string; session_id?: string };
+      
+      // Get session ID from args or use a default
+      const sessionId = sessionArgs.session_id || 'default-session';
+      
+      switch (sessionArgs.action) {
+        case 'enable': {
+          if (!sessionArgs.name) {
+            throw new Error('name is required for enable action');
+          }
+          const success = handlerResolver.enableHandlerForSession(sessionId, sessionArgs.name);
+          return {
+            content: [{ 
+              type: 'text', 
+              text: success 
+                ? `Handler ${sessionArgs.name} enabled for session ${sessionId}` 
+                : `Handler ${sessionArgs.name} not found`
+            }]
+          };
+        }
+        
+        case 'disable': {
+          if (!sessionArgs.name) {
+            throw new Error('name is required for disable action');
+          }
+          const success = handlerResolver.disableHandlerForSession(sessionId, sessionArgs.name);
+          return {
+            content: [{ 
+              type: 'text', 
+              text: success 
+                ? `Handler ${sessionArgs.name} disabled for session ${sessionId}` 
+                : `Handler ${sessionArgs.name} not found`
+            }]
+          };
+        }
+        
+        case 'status': {
+          const statuses = handlerResolver.getHandlerStatus(sessionId);
+          const formatted = statuses
+            .map(s => {
+              let status = `${s.name}: ${s.effectiveEnabled ? 'enabled' : 'disabled'}`;
+              if (s.sessionOverride !== undefined) {
+                status += ` (session override: ${s.sessionOverride ? 'enabled' : 'disabled'})`;
+              } else if (s.projectEnabled !== s.globalEnabled) {
+                status += ` (project: ${s.projectEnabled ? 'enabled' : 'disabled'})`;
+              }
+              return status;
+            })
+            .join('\n');
+          
+          return {
+            content: [{ 
+              type: 'text', 
+              text: `Handler status for session ${sessionId}:\n${formatted}`
+            }]
+          };
+        }
+        
+        case 'clear': {
+          const { sessionStateManager } = await import('../session/state.js');
+          sessionStateManager.clearSession(sessionId);
+          return {
+            content: [{ 
+              type: 'text', 
+              text: `Session overrides cleared for ${sessionId}`
+            }]
+          };
+        }
+        
+        default:
+          throw new Error(`Unknown action: ${sessionArgs.action}`);
       }
     }
     

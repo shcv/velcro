@@ -5,6 +5,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { configManager } from '../config/index.js';
 import { HookData } from '../types/hooks.js';
 import { HandlerExecutor, HookExecutionResult } from '../handlers/executor.js';
+import { handlerResolver } from '../handlers/resolver.js';
 import { createMCPServer } from './mcp-handlers.js';
 import { logger } from '../logging/logger.js';
 import { SimpleOAuthProvider } from './auth/simple-oauth.js';
@@ -67,8 +68,8 @@ export async function startHTTPServer(options: { port?: number, host?: string } 
       logger.logHook(hookData);
       logger.info(`Processing ${hookData.hook_event_name} hook`);
       
-      // Execute handlers for this hook
-      const handlers = configManager.getHandlersForHook(hookData.hook_event_name);
+      // Execute handlers for this hook using resolver
+      const handlers = handlerResolver.resolveHandlers(hookData);
       logger.debug(`Found ${handlers.length} handlers for ${hookData.hook_event_name}`);
       
       // Track results from handlers
