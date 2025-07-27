@@ -95,7 +95,7 @@ export async function startHTTPServer(options: { port?: number, host?: string } 
           
           // Log successful output
           if (result.success && result.output) {
-            console.error(`[${handler.name}] ${result.output}`);
+            logger.info(`Handler output from ${handler.name}`, { output: result.output });
           }
           
           // Check for blocking
@@ -104,11 +104,11 @@ export async function startHTTPServer(options: { port?: number, host?: string } 
             blockingResult = result;
             // Log blocking message
             if (result.stderr) {
-              console.error(`[${handler.name}] ${result.stderr}`);
+              logger.warn(`Handler ${handler.name} blocked execution`, { stderr: result.stderr });
             }
           } else if (!result.success && result.stderr) {
             // Log non-blocking errors
-            console.error(`[${handler.name}] ${result.stderr}`);
+            logger.error(`Handler ${handler.name} failed`, { stderr: result.stderr });
           }
         } else {
           // Promise rejected - handler threw an exception
@@ -253,10 +253,10 @@ export async function startHTTPServer(options: { port?: number, host?: string } 
         sessionIdGenerator: () => sessionId,
         enableJsonResponse: false, // Use SSE streaming
         onsessioninitialized: async (sid) => {
-          console.error(`MCP session initialized: ${sid}`);
+          logger.info(`MCP session initialized: ${sid}`);
         },
         onsessionclosed: (sid) => {
-          console.error(`MCP session closed: ${sid}`);
+          logger.info(`MCP session closed: ${sid}`);
           streamableSessions.delete(sid);
         }
       });
@@ -285,6 +285,21 @@ export async function startHTTPServer(options: { port?: number, host?: string } 
     // Log security configuration warnings
     logSecurityConfiguration();
     
+    logger.info(`Velcro server listening on http://${host}:${port}`, {
+      endpoints: {
+        hooks: 'POST /hooks',
+        mcp: '/mcp (recommended)',
+        sse: 'GET /sse, POST /messages (legacy)'
+      },
+      auth: config.auth?.enabled ? {
+        authorization: '/oauth/authorize',
+        token: '/oauth/token',
+        metadata: '/.well-known/oauth-authorization-server',
+        required: config.auth.required
+      } : undefined
+    });
+    
+    // Also log to console for immediate visibility
     console.error(`\nVelcro server listening on http://${host}:${port}`);
     console.error('Hook submission endpoint: POST /hooks');
     console.error('MCP endpoints:');

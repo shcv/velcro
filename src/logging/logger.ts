@@ -1,7 +1,8 @@
 import { appendFileSync, mkdirSync, readdirSync, statSync, unlinkSync, renameSync } from 'fs';
 import { join } from 'path';
-import { HookData, PreToolUseHookData, PostToolUseHookData } from '../types/hooks.js';
+import { HookData } from '../types/hooks.js';
 import { configManager } from '../config/index.js';
+import { HookExecutionResult } from '../handlers/executor.js';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -16,6 +17,20 @@ export interface HookLogEntry {
   timestamp: string;
   hook_event_name: string;
   [key: string]: unknown; // Allow additional hook data fields
+}
+
+export interface HookExecutionLogEntry {
+  timestamp: string;
+  hook_event_name: string;
+  session_id: string;
+  execution_results: HookExecutionResult[];
+  summary: {
+    total_handlers: number;
+    successful: number;
+    failed: number;
+    blocked: boolean;
+    blocking_handler?: string;
+  };
 }
 
 class Logger {
@@ -153,8 +168,8 @@ class Logger {
     const logFile = this.getLogFile();
     appendFileSync(logFile, JSON.stringify(entry) + '\n');
 
-    // Also log to console if in debug mode
-    if (configManager.getConfig().logging.level === 'debug') {
+    // Also log to console if in debug mode (but not when running inside a velcro handler)
+    if (configManager.getConfig().logging.level === 'debug' && !process.env.HANDLER_NAME) {
       const prefix = `[${level.toUpperCase()}]`;
       if (data) {
         console.error(prefix, message, data);
@@ -189,9 +204,39 @@ class Logger {
     const logFile = this.getLogFile('hooks');
     appendFileSync(logFile, JSON.stringify(entry) + '\n');
     
-    this.debug(`Hook logged: ${hookData.hook_event_name}`, {
-      hook: hookData.hook_event_name,
-      tools: 'tool_name' in hookData ? (hookData as PreToolUseHookData | PostToolUseHookData).tool_name : undefined
+    // Don't output to console for hook logging to avoid polluting hook responses
+    // The hook data is already logged to file for debugging
+  }
+
+  logHookExecution(hookData: HookData, results: HookExecutionResult[]): void {
+    const successful = results.filter(r => r.success).length;
+    const failed = results.filter(r => !r.success).length;
+    const blocked = results.some(r => r.blockExecution);
+    const blockingHandler = results.find(r => r.blockExecution)?.handler;
+
+    const entry: HookExecutionLogEntry = {
+      timestamp: new Date().toISOString(),
+      hook_event_name: hookData.hook_event_name,
+      session_id: hookData.session_id,
+      execution_results: results,
+      summary: {
+        total_handlers: results.length,
+        successful,
+        failed,
+        blocked,
+        blocking_handler: blockingHandler
+      }
+    };
+
+    const logFile = this.getLogFile('hook-executions');
+    appendFileSync(logFile, JSON.stringify(entry) + '\n');
+    
+    this.debug(`Hook execution logged: ${hookData.hook_event_name}`, {
+      handlers: results.length,
+      successful,
+      failed,
+      blocked,
+      outputs: results.filter(r => r.output).map(r => `${r.handler}: ${r.output}`)
     });
   }
 

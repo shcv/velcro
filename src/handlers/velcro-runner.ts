@@ -38,25 +38,39 @@ process.stdin.on('end', async () => {
       return requireFromPath(packageName);
     };
     
-    // Create async function and execute
-    const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
-    const fn = new AsyncFunction('hookData', 'console', 'require', 'process', handlerCode);
+    // Store the original process.exit to restore it later
+    const originalExit = process.exit;
     
-    // Provide a wrapped process object that intercepts exit calls
-    const wrappedProcess = {
-      ...process,
-      exit: (code?: number) => {
-        // Instead of exiting the process, throw an error with the exit code
-        interface ProcessError extends Error {
-          exitCode?: number;
-        }
-        const error = new Error(`Handler exited with code ${code}`) as ProcessError;
-        error.exitCode = code;
-        throw error;
+    // Override the global process.exit to intercept all exit calls
+    process.exit = (code?: number): never => {
+      // Restore original exit function before throwing
+      process.exit = originalExit;
+      
+      // Throw an error with the exit code
+      interface ProcessError extends Error {
+        exitCode?: number;
       }
+      const error = new Error(`Handler exited with code ${code}`) as ProcessError;
+      error.exitCode = code;
+      throw error;
     };
     
-    await fn(hookData, console, requireForHandler, wrappedProcess);
+    try {
+      // Create async function and execute
+      const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+      const fn = new AsyncFunction('hookData', 'console', 'require', 'process', handlerCode);
+      
+      // Provide a wrapped process object that also intercepts exit calls
+      const wrappedProcess = {
+        ...process,
+        exit: process.exit // Use the overridden global exit
+      };
+      
+      await fn(hookData, console, requireForHandler, wrappedProcess);
+    } finally {
+      // Always restore the original process.exit
+      process.exit = originalExit;
+    }
     
     // Success
     process.exit(EXIT_CODE.SUCCESS);
@@ -69,9 +83,7 @@ process.stdin.on('end', async () => {
       process.exit((error as ProcessError).exitCode || EXIT_CODE.ERROR);
     }
     
-    // Other errors
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`Handler error: ${errorMessage}`);
+    // Other errors - don't add extra stderr output that could interfere
     process.exit(EXIT_CODE.ERROR);
   }
 });

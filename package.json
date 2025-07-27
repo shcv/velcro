@@ -1,6 +1,6 @@
 {
   "name": "@shcv/velcro",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Master hook interceptor and manager for Claude Code - intercept, process, and automate Claude's tool usage with custom JavaScript handlers",
   "main": "dist/index.js",
   "type": "module",
