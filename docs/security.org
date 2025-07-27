@@ -1,0 +1,214 @@
+#+TITLE: Velcro Security Guide
+
+* Overview
+
+Velcro is a powerful tool that can execute arbitrary code through handlers. This guide explains the security model and best practices for safe operation.
+
+* Default Security Model
+
+** Localhost-Only by Default
+
+Velcro binds to ~localhost:3010~ by default, making it inaccessible from the network. This is the safest configuration for most users.
+
+** Authentication Requirements
+
+- *Localhost connections*: No authentication required by default
+- *Remote connections*: OAuth authentication required by default (when enabled)
+
+* Remote Access Configuration
+
+** Understanding the Risks
+
+When you enable remote access, you're allowing network clients to:
+- Trigger hook handlers that can execute arbitrary code
+- Access hook data and logs
+- Potentially read/write files accessible to the Velcro process
+
+** Safe Remote Access Setup
+
+*** Step 1: Enable Remote Binding
+
+#+begin_src bash
+# Allow binding to all network interfaces
+velcro security allow-remote --host 0.0.0.0
+
+# Or bind to a specific interface
+velcro security allow-remote --host 192.168.1.100
+#+end_src
+
+This automatically enables OAuth requirement for remote connections.
+
+*** Step 2: Configure OAuth
+
+#+begin_src bash
+velcro security configure-oauth \
+  --client-id your-oauth-client-id \
+  --client-secret your-oauth-client-secret
+#+end_src
+
+*** Step 3: Restart the Server
+
+#+begin_src bash
+velcro serve
+#+end_src
+
+The server will:
+1. Accept connections from the network
+2. Require OAuth tokens for non-localhost connections
+3. Log all remote access attempts
+
+** Disabling Authentication (Not Recommended)
+
+⚠️ *CRITICAL WARNING*: Disabling authentication allows REMOTE CODE EXECUTION!
+
+Only disable authentication if:
+- You're in a completely trusted network
+- You're using additional network-level security (VPN, firewall)
+- You understand and accept the risks
+
+#+begin_src bash
+# This command requires explicit acknowledgment
+velcro security disable-auth --i-understand-the-risks
+#+end_src
+
+* Security Best Practices
+
+** Handler Security
+
+1. *Review all handlers* before enabling them
+2. *Use minimal permissions* - Don't run Velcro as root
+3. *Validate inputs* in your handlers
+4. *Log actions* for audit trails
+
+** Network Security
+
+1. *Use localhost-only* when possible
+2. *Enable OAuth* for any remote access
+3. *Use HTTPS proxy* for production deployments
+4. *Implement firewall rules* to limit access
+
+** OAuth Configuration
+
+1. *Use strong secrets* - Generate cryptographically secure client secrets
+2. *Rotate credentials* regularly
+3. *Monitor access logs* for unauthorized attempts
+
+* Configuration Reference
+
+** Server Configuration
+
+#+begin_src json
+{
+  "server": {
+    "host": "localhost",           // Binding address
+    "port": 3010,                  // Port number
+    "requireAuthForRemote": true,  // Require auth for non-localhost
+    "allowRemoteWithoutAuth": false // Override auth requirement
+  }
+}
+#+end_src
+
+** Authentication Configuration
+
+#+begin_src json
+{
+  "auth": {
+    "enabled": true,               // Enable OAuth support
+    "required": false,             // Require for localhost
+    "clientId": "your-client-id",
+    "clientSecret": "your-secret",
+    "redirectUri": "http://localhost:3010/oauth/callback"
+  }
+}
+#+end_src
+
+* Threat Model
+
+** Local Threats
+
+- *Malicious handlers*: Review all handler code
+- *Package vulnerabilities*: Audit npm packages used by handlers
+- *File system access*: Handlers can read/write files
+
+** Remote Threats (when enabled)
+
+- *Unauthorized access*: Mitigated by OAuth requirement
+- *Network sniffing*: Use HTTPS proxy in production
+- *DoS attacks*: No built-in rate limiting (use proxy)
+
+* Monitoring and Auditing
+
+** Access Logs
+
+Monitor the Velcro logs for:
+- Remote connection attempts
+- Authentication failures
+- Handler executions
+
+#+begin_src bash
+# View recent logs
+velcro logs tail --count 50
+
+# Monitor security events
+velcro monitor
+#+end_src
+
+** Security Status
+
+Regular security checks:
+
+#+begin_src bash
+# Check current security configuration
+velcro security status
+
+# Review enabled handlers
+velcro handler list
+#+end_src
+
+* Incident Response
+
+If you suspect unauthorized access:
+
+1. *Immediately restrict to localhost*:
+   #+begin_src bash
+   velcro security localhost-only
+   velcro serve --restart
+   #+end_src
+
+2. *Review logs* for suspicious activity:
+   #+begin_src bash
+   velcro logs query --filters '{"start_time": "2024-01-01T00:00:00Z"}'
+   #+end_src
+
+3. *Audit handlers* for modifications:
+   #+begin_src bash
+   velcro handler list --verbose
+   #+end_src
+
+4. *Rotate OAuth credentials* if compromised
+
+* FAQ
+
+** Q: Is it safe to use Velcro?
+
+A: Yes, when used with default settings (localhost-only). Remote access requires careful configuration.
+
+** Q: Can I use Velcro in production?
+
+A: Velcro is designed for development environments. For production:
+- Use a reverse proxy with HTTPS
+- Implement proper authentication
+- Run with minimal permissions
+- Monitor all access
+
+** Q: What if I need to share access with my team?
+
+A: Best practices for team access:
+1. Use a VPN for network-level security
+2. Configure OAuth with your identity provider
+3. Use separate handler sets per environment
+4. Implement audit logging
+
+** Q: How do I report security issues?
+
+A: Security issues should be reported privately via the GitHub security advisory feature or by email to the maintainers.

@@ -1,0 +1,46 @@
+# Source files
+src/
+*.ts
+!dist/**/*.d.ts
+
+# Development files
+.gitignore
+tsconfig.json
+vitest.config.ts
+eslint.config.js
+.eslintrc.json
+.prettierrc
+
+# Documentation source
+docs/design.org
+
+# Examples (keep these for npm package)
+# examples/
+
+# Local data
+.claude/
+*.log
+logs/
+
+# Build artifacts
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+__tests__/
+coverage/
+
+# Development dependencies config
+.env
+.env.local

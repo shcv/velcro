@@ -1,0 +1,141 @@
+#+TITLE: Velcro Directory Structure
+
+* Project Structure
+
+#+begin_example
+velcro/
+├── package.json
+├── tsconfig.json
+├── .gitignore
+├── README.org
+├── docs/
+│   ├── design.org
+│   └── directory-structure.org
+├── src/
+│   ├── index.ts                    # Main entry point
+│   ├── types/
+│   │   ├── index.ts               # Type definitions
+│   │   ├── hooks.ts               # Hook-related types
+│   │   ├── handlers.ts            # Handler types
+│   │   └── config.ts              # Configuration types
+│   ├── server/
+│   │   ├── hook-server.ts         # Express server for hooks
+│   │   ├── mcp-server.ts          # MCP server implementation
+│   │   └── middleware/
+│   │       ├── auth.ts            # Authentication middleware
+│   │       ├── validation.ts      # Request validation
+│   │       └── error-handler.ts   # Error handling
+│   ├── config/
+│   │   ├── index.ts               # Configuration manager
+│   │   ├── loader.ts              # Config file loading
+│   │   ├── schema.ts              # Config validation schema
+│   │   └── defaults.ts            # Default configuration
+│   ├── handlers/
+│   │   ├── engine.ts              # Handler execution engine
+│   │   ├── sandbox.ts             # Sandboxing implementation
+│   │   ├── manager.ts             # Handler CRUD operations
+│   │   └── context.ts             # Execution context builder
+│   ├── logging/
+│   │   ├── index.ts               # Logger interface
+│   │   ├── file-logger.ts         # File-based logging
+│   │   ├── rotation.ts            # Log rotation logic
+│   │   └── query.ts               # Log querying
+│   ├── storage/
+│   │   ├── index.ts               # Storage abstraction
+│   │   ├── handlers.ts            # Handler storage
+│   │   ├── logs.ts                # Log storage
+│   │   └── settings.ts            # Settings storage
+│   ├── mcp/
+│   │   ├── tools/
+│   │   │   ├── handler-tools.ts   # Handler management tools
+│   │   │   ├── package-tools.ts   # Package management
+│   │   │   ├── logging-tools.ts   # Logging control
+│   │   │   ├── settings-tools.ts  # Settings management
+│   │   │   └── monitoring-tools.ts # Stats and monitoring
+│   │   ├── resources/
+│   │   │   ├── handlers.ts        # Handler resources
+│   │   │   └── logs.ts            # Log resources
+│   │   └── prompts/
+│   │       └── handler-templates.ts # Handler prompts
+│   ├── utils/
+│   │   ├── xdg.ts                 # XDG directory helpers
+│   │   ├── validation.ts          # Input validation
+│   │   ├── async.ts               # Async utilities
+│   │   └── errors.ts              # Error classes
+│   └── cli/
+│       ├── index.ts               # Main CLI entry point
+│       ├── commands/
+│       │   ├── serve.ts           # Server command
+│       │   ├── hook.ts            # Hook submission command
+│       │   ├── handler.ts         # Handler management
+│       │   ├── package.ts         # Package management
+│       │   ├── config.ts          # Config management
+│       │   ├── logs.ts            # Log management
+│       │   ├── monitor.ts         # System monitoring
+│       │   └── execute.ts         # Handler execution
+│       └── utils.ts               # CLI utilities
+├── bin/
+│   └── velcro                    # Single executable with subcommands
+├── examples/
+│   ├── handlers/
+│   │   ├── auto-format.js        # Auto-formatting handler
+│   │   ├── test-runner.js        # Test execution handler
+│   │   ├── notification.js       # Notification handler
+│   │   └── validation.js         # Code validation handler
+│   ├── configs/
+│   │   ├── basic.json            # Basic configuration
+│   │   ├── advanced.json         # Advanced configuration
+│   │   └── development.json      # Development setup
+│   └── claude-code/
+│       └── settings.json         # Example CC settings
+├── tests/
+│   ├── unit/
+│   │   ├── handlers/
+│   │   ├── config/
+│   │   ├── logging/
+│   │   └── mcp/
+│   ├── integration/
+│   │   ├── hook-flow.test.ts
+│   │   ├── mcp-tools.test.ts
+│   │   └── storage.test.ts
+│   └── fixtures/
+│       ├── handlers/
+│       └── events/
+└── scripts/
+    ├── setup.sh                  # Initial setup script
+    ├── install-systemd.sh        # Systemd service installer
+    └── build.sh                  # Build script
+#+end_example
+
+* Key Files Description
+
+** /src/types/
+Central type definitions for TypeScript, ensuring type safety across the project.
+
+** /src/server/
+Contains the two main servers:
+- hook-server.ts: Express server that receives hook data from Claude Code
+- mcp-server.ts: MCP server that provides tools and resources
+
+** /src/handlers/
+Core handler system:
+- engine.ts: Executes user-defined JavaScript handlers
+- sandbox.ts: Provides secure execution environment
+- manager.ts: CRUD operations for handlers
+
+** /src/mcp/tools/
+MCP tool implementations, each file containing related tools:
+- handler-tools.ts: registerHandler, listHandlers, updateHandler, etc.
+- package-tools.ts: install, uninstall, list, update, audit packages
+- logging-tools.ts: setLogLevel, queryLogs
+- settings-tools.ts: getSetting, setSetting, listSettings
+- monitoring-tools.ts: getStats, getActiveHooks, testHandler
+
+** /bin/
+Executable scripts that serve as entry points:
+- hook-mcp-server: Main server process
+- hook-mcp-submit: Lightweight hook submission
+- hook-mcp-cli: Management CLI
+
+** /examples/
+Ready-to-use examples for common use cases, helping users get started quickly.

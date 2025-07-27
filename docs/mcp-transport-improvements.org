@@ -1,0 +1,207 @@
+#+TITLE: MCP Transport Improvements for Velcro
+
+* Problem Statement
+
+1. Handler execution (ephemeral CLI) shouldn't affect MCP server stability
+2. Current stdio approach creates separate instances per project
+3. HTTP MCP needs proper OAuth authentication for Claude Code compatibility
+
+* Solution 1: Stdio Proxy (IMPLEMENTED)
+
+** Architecture
+#+begin_example
+Claude Code → HTTP → Central Velcro Server
+        ↓               ↓
+  Direct HTTP       All handlers
+   connection       execute here
+#+end_example
+
+** Implementation
+
+Claude Code connects directly to the HTTP server:
+
+- Uses streamableHttp transport for direct connection
+- No proxy needed - simpler architecture
+- OAuth support for authentication
+- Better performance and reliability
+#+begin_src bash
+velcro proxy --server http://localhost:3010
+#+end_src
+
+*** Claude Code Configuration
+#+begin_src json
+{
+  "mcpServers": {
+    "velcro": {
+      "command": "velcro",
+      "args": ["proxy"],
+      "env": {
+        "VELCRO_SERVER_URL": "http://localhost:3010",
+        "VELCRO_API_KEY": "optional-api-key"
+      }
+    }
+  }
+}
+#+end_src
+
+** Benefits
+- Simple stdio interface for Claude Code
+- Central server management
+- No OAuth complexity for local usage
+- Per-project environment variables
+
+** Drawbacks
+- Additional proxy process overhead
+- Requires local velcro-proxy installation
+
+* Solution 2: OAuth-Enabled HTTP MCP
+
+** Architecture
+Based on MCP OAuth 2.1 specification:
+- Velcro acts as OAuth Resource Server
+- Supports delegated authorization (Auth0, Google, etc.)
+- Or built-in simple OAuth for local usage
+
+** Implementation
+
+*** OAuth Provider Integration
+#+begin_src typescript
+// src/server/auth/oauth-provider.ts
+import { ProxyOAuthServerProvider } from '@modelcontextprotocol/sdk/server/auth/providers/proxyProvider.js';
+
+export const createOAuthProvider = (config: OAuthConfig) => {
+  if (config.provider === 'built-in') {
+    return new BuiltInOAuthProvider({
+      issuerUrl: config.issuerUrl,
+      clients: config.clients
+    });
+  }
+  
+  return new ProxyOAuthServerProvider({
+    endpoints: {
+      authorizationUrl: config.authorizationUrl,
+      tokenUrl: config.tokenUrl,
+      revocationUrl: config.revocationUrl
+    },
+    verifyAccessToken: async (token) => {
+      // Verify with external provider
+      const response = await fetch(config.introspectionUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${config.clientSecret}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: `token=${token}`
+      });
+      
+      const data = await response.json();
+      return {
+        token,
+        clientId: data.client_id,
+        scopes: data.scope?.split(' ') || []
+      };
+    }
+  });
+};
+#+end_src
+
+*** MCP Server Update
+#+begin_src typescript
+// src/server/mcp-handlers.ts
+import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
+
+// Add OAuth middleware
+if (config.auth?.enabled) {
+  const provider = createOAuthProvider(config.auth);
+  
+  app.use('/oauth', mcpAuthRouter({
+    provider,
+    issuerUrl: new URL(config.auth.issuerUrl),
+    baseUrl: new URL(`http://${config.server.host}:${config.server.port}`),
+    serviceDocumentationUrl: new URL('https://velcro.dev/docs')
+  }));
+  
+  // Protect MCP endpoints
+  app.use('/mcp', requireAuth(provider));
+}
+#+end_src
+
+*** Discovery Endpoints
+#+begin_src typescript
+// OAuth 2.0 Protected Resource Metadata (RFC9728)
+app.get('/.well-known/oauth-protected-resource', (req, res) => {
+  res.json({
+    resource: `http://${config.server.host}:${config.server.port}`,
+    authorization_servers: [config.auth.issuerUrl],
+    bearer_methods_supported: ['header'],
+    resource_documentation: 'https://velcro.dev/docs/api'
+  });
+});
+#+end_src
+
+** Benefits
+- Standard OAuth 2.1 compliance
+- Enterprise-ready authentication
+- Works with existing identity providers
+- No additional proxy processes
+
+** Drawbacks
+- Complex setup for simple local usage
+- Requires OAuth configuration
+- Browser-based auth flow
+
+* Recommendation
+
+Implement **both** solutions:
+
+1. **Stdio Proxy** as default for easy local development
+2. **OAuth HTTP** for production/enterprise deployments
+
+** Implementation Priority
+
+1. Fix MCP server stability bug (handler exit shouldn't crash server)
+2. Implement stdio proxy (simpler, immediate benefit)
+3. Add OAuth support (longer-term, enterprise needs)
+
+* Handler Isolation Fix (IMPLEMENTED)
+
+The immediate bug where handler exit code 2 crashes MCP connection has been fixed:
+
+1. **Velcro handlers run in isolated child processes** (src/handlers/velcro-runner.ts)
+   - Prevents `process.exit()` from killing the MCP server
+   - Maintains full functionality including package access
+   - Exit codes properly captured and handled
+
+2. **Handler executor** spawns velcro handlers as child processes
+   - Exit code 2 properly blocks operations without crashing
+   - Stdout/stderr properly captured and logged
+   - Package paths passed via environment variables
+
+The fix ensures complete isolation between handler execution and the MCP server process.
+
+* Configuration Examples
+
+** Local Development (stdio proxy)
+#+begin_src json
+{
+  "mcpServers": {
+    "velcro": {
+      "command": "velcro-proxy"
+    }
+  }
+}
+#+end_src
+
+** Production (OAuth HTTP)
+#+begin_src json
+{
+  "mcpServers": {
+    "velcro": {
+      "transport": {
+        "type": "http",
+        "url": "https://velcro.company.com/mcp"
+      }
+    }
+  }
+}
+#+end_src

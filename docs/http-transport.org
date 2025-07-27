@@ -1,0 +1,141 @@
+#+TITLE: HTTP Transport for Velcro MCP Server
+
+Velcro supports HTTP-based MCP transports in addition to stdio mode. This allows for more flexible deployment options and better integration with web-based tools.
+
+* Available Transports
+
+** 1. Streamable HTTP Transport (Recommended)
+
+The modern MCP transport that supports streaming responses and session management.
+
+*Endpoint*: ~/mcp~
+
+*Example configuration for Claude Code*:
+#+begin_src json
+{
+  "mcpServers": {
+    "velcro": {
+      "transport": {
+        "type": "streamableHttp",
+        "url": "http://localhost:3010/mcp"
+      }
+    }
+  }
+}
+#+end_src
+
+** 2. SSE Transport (Legacy)
+
+Server-Sent Events transport for compatibility with older MCP clients.
+
+*Endpoints*: 
+- GET ~/sse~ - Establish SSE connection
+- POST ~/messages~ - Send messages
+
+*Example configuration*:
+#+begin_src json
+{
+  "mcpServers": {
+    "velcro": {
+      "transport": {
+        "type": "sse",
+        "url": "http://localhost:3010/sse"
+      }
+    }
+  }
+}
+#+end_src
+
+* Starting the Server
+
+** HTTP Mode (default)
+#+begin_src bash
+./bin/velcro serve
+# or with custom port and host
+./bin/velcro serve --port 3010 --host localhost
+#+end_src
+
+** Stdio Mode
+#+begin_src bash
+./bin/velcro serve --stdio
+#+end_src
+
+* Testing with curl
+
+** Test hook submission
+#+begin_src bash
+curl -X POST http://localhost:3010/hooks \
+  -H "Content-Type: application/json" \
+  -d '{"hook_event_name":"Test","test":true}'
+#+end_src
+
+** Test MCP endpoint
+#+begin_src bash
+# Initialize session
+curl -X POST http://localhost:3010/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2025-03-26",
+      "capabilities": {},
+      "clientInfo": {"name": "test", "version": "1.0"}
+    }
+  }'
+#+end_src
+
+* Session Management
+
+The Streamable HTTP transport supports stateful sessions. Each session gets a unique ID that must be included in subsequent requests. The session ID is returned in the response headers.
+
+* Package Management Examples
+
+** Install packages for a handler
+#+begin_src json
+{
+  "tool": "velcro-package",
+  "arguments": {
+    "command": "install",
+    "packages": ["lodash", "axios"],
+    "scope": "handler",
+    "handler_name": "my-handler"
+  }
+}
+#+end_src
+
+** Install global packages
+#+begin_src json
+{
+  "tool": "velcro-package",
+  "arguments": {
+    "command": "install",
+    "packages": ["moment"],
+    "scope": "global"
+  }
+}
+#+end_src
+
+** List packages
+#+begin_src json
+{
+  "tool": "velcro-package",
+  "arguments": {
+    "command": "list",
+    "scope": "handler",
+    "handler_name": "my-handler"
+  }
+}
+#+end_src
+
+** Search npm registry
+#+begin_src json
+{
+  "tool": "velcro-package",
+  "arguments": {
+    "command": "search",
+    "packages": ["date"]
+  }
+}
+#+end_src

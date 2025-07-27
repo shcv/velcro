@@ -1,0 +1,65 @@
+#+TITLE: OAuth Setup for Velcro HTTP MCP
+
+* Overview
+
+Velcro supports OAuth 2.0 authentication for HTTP MCP connections.
+
+* Configuration
+
+** Enable OAuth (Default)
+
+OAuth is enabled by default but optional. Update your config to require it:
+
+#+begin_src json
+{
+  "auth": {
+    "enabled": true,
+    "required": true  // Set to true to require OAuth
+  }
+}
+#+end_src
+
+** Claude Code Configuration
+
+Use the streamableHttp transport:
+
+#+begin_src json
+{
+  "mcpServers": {
+    "velcro": {
+      "transport": {
+        "type": "streamableHttp",
+        "url": "http://localhost:3010/mcp"
+      }
+    }
+  }
+}
+#+end_src
+
+* OAuth Flow
+
+1. Claude Code will automatically open browser for authorization
+2. Velcro auto-approves for localhost clients (development mode)
+3. Authorization code is exchanged for access token
+4. Claude Code uses Bearer token for all subsequent requests
+
+* OAuth Endpoints
+
+- Authorization: `GET /oauth/authorize`
+- Token: `POST /oauth/token`
+- Metadata: `GET /.well-known/oauth-authorization-server`
+- Resource metadata: `GET /.well-known/oauth-protected-resource`
+
+* Default Client
+
+A default client `velcro-local` is pre-configured for local development:
+- Client ID: `velcro-local`
+- No client secret required
+- Redirect URIs: `http://localhost:*`, `https://localhost:*`
+
+* Security Notes
+
+- In production, replace the simple OAuth provider with a proper identity provider
+- Add client registration and validation
+- Implement proper authorization UI instead of auto-approval
+- Use HTTPS for all OAuth endpoints

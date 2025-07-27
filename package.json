@@ -1,0 +1,74 @@
+{
+  "name": "@shcv/velcro",
+  "version": "0.1.0",
+  "description": "Master hook interceptor and manager for Claude Code - intercept, process, and automate Claude's tool usage with custom JavaScript handlers",
+  "main": "dist/index.js",
+  "type": "module",
+  "bin": {
+    "velcro": "./bin/velcro"
+  },
+  "directories": {
+    "doc": "docs",
+    "example": "examples"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "lint": "eslint src/**/*.ts",
+    "typecheck": "tsc --noEmit",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run lint && npm run typecheck && npm run build",
+    "postinstall": "echo 'Run \"npx @shcv/velcro install-hooks\" to set up Claude Code integration' || true"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shcv/velcro.git"
+  },
+  "bugs": {
+    "url": "https://github.com/shcv/velcro/issues"
+  },
+  "homepage": "https://github.com/shcv/velcro#readme",
+  "keywords": [
+    "claude-code",
+    "claude",
+    "hooks",
+    "mcp",
+    "model-context-protocol",
+    "automation",
+    "handler",
+    "interceptor",
+    "tool-usage",
+    "ai-development",
+    "developer-tools"
+  ],
+  "author": "Samuel H. Christie V <shcv@sdf.org>",
+  "license": "CC0-1.0",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.16.0",
+    "chalk": "^5.4.1",
+    "commander": "^14.0.0",
+    "express": "^5.1.0",
+    "winston": "^3.17.0",
+    "winston-daily-rotate-file": "^5.0.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.32.0",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.1.0",
+    "@typescript-eslint/eslint-plugin": "^8.38.0",
+    "@typescript-eslint/parser": "^8.38.0",
+    "@vitest/ui": "^3.2.4",
+    "eslint": "^9.31.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

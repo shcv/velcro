@@ -1,0 +1,230 @@
+import { appendFileSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'fs';
+import { join } from 'path';
+import { HookData, PreToolUseHookData, PostToolUseHookData } from '../types/hooks.js';
+import { configManager } from '../config/index.js';
+
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+export interface LogEntry {
+  timestamp: string;
+  level: LogLevel;
+  message: string;
+  data?: unknown;
+}
+
+export interface HookLogEntry {
+  timestamp: string;
+  hook_event_name: string;
+  [key: string]: unknown; // Allow additional hook data fields
+}
+
+class Logger {
+  private logDir: string;
+  private logLevels: Record<LogLevel, number> = {
+    debug: 0,
+    info: 1,
+    warn: 2,
+    error: 3
+  };
+
+  constructor() {
+    // Use configured log directory
+    const config = configManager.getConfig();
+    
+    if (config.logging.logDir) {
+      // If logDir is absolute, use it directly
+      if (config.logging.logDir.startsWith('/') || config.logging.logDir.match(/^[A-Za-z]:\\/)) {
+        this.logDir = config.logging.logDir;
+      } else {
+        // Otherwise, treat it as relative to the data directory
+        this.logDir = join(configManager.getDataDirectory(), config.logging.logDir);
+      }
+    } else {
+      // Default to logs subdirectory in data directory
+      this.logDir = join(configManager.getDataDirectory(), 'logs');
+    }
+    
+    mkdirSync(this.logDir, { recursive: true });
+    
+    // Clean up old logs on startup
+    this.rotateLogsIfNeeded();
+  }
+
+  private shouldLog(level: LogLevel): boolean {
+    const config = configManager.getConfig();
+    const configuredLevel = config.logging.level;
+    return this.logLevels[level] >= this.logLevels[configuredLevel];
+  }
+
+  private getLogFile(prefix: string = 'app'): string {
+    const today = new Date().toISOString().split('T')[0];
+    const filename = `${prefix}-${today}.jsonl`;
+    const filepath = join(this.logDir, filename);
+    
+    // Check if we need to rotate based on size
+    this.checkFileSize(filepath);
+    
+    return filepath;
+  }
+
+  private parseSize(sizeStr: string): number {
+    const match = sizeStr.match(/^(\d+(?:\.\d+)?)\s*([KMG]?B)?$/i);
+    if (!match) return 10 * 1024 * 1024; // Default 10MB
+    
+    const num = parseFloat(match[1]);
+    const unit = (match[2] || 'B').toUpperCase();
+    
+    const multipliers: Record<string, number> = {
+      'B': 1,
+      'KB': 1024,
+      'MB': 1024 * 1024,
+      'GB': 1024 * 1024 * 1024
+    };
+    
+    return num * (multipliers[unit] || 1);
+  }
+
+  private checkFileSize(filepath: string): void {
+    try {
+      const stats = statSync(filepath);
+      const config = configManager.getConfig();
+      const maxSize = this.parseSize(config.logging.maxSize);
+      
+      if (stats.size > maxSize) {
+        // Rotate the file by renaming it with a timestamp
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const rotatedPath = filepath.replace('.jsonl', `-${timestamp}.jsonl`);
+        
+        // Rename the current file
+        const fs = require('fs');
+        fs.renameSync(filepath, rotatedPath);
+        
+        this.info(`Rotated log file ${filepath} to ${rotatedPath} (size: ${stats.size} bytes)`);
+      }
+    } catch (error) {
+      // File doesn't exist yet, that's fine
+    }
+  }
+
+  private rotateLogsIfNeeded(): void {
+    try {
+      const config = configManager.getConfig();
+      const maxFiles = config.logging.maxFiles;
+      
+      // Get all log files
+      const files = readdirSync(this.logDir)
+        .filter(f => f.endsWith('.jsonl'))
+        .map(f => ({
+          name: f,
+          path: join(this.logDir, f),
+          stats: statSync(join(this.logDir, f))
+        }))
+        .sort((a, b) => b.stats.mtime.getTime() - a.stats.mtime.getTime());
+      
+      // Keep only the most recent maxFiles
+      if (files.length > maxFiles) {
+        const filesToDelete = files.slice(maxFiles);
+        
+        for (const file of filesToDelete) {
+          unlinkSync(file.path);
+          this.info(`Deleted old log file: ${file.name}`);
+        }
+      }
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.error('Failed to rotate logs', { error: errorMessage });
+    }
+  }
+
+  log(level: LogLevel, message: string, data?: unknown): void {
+    if (!this.shouldLog(level)) {
+      return;
+    }
+
+    const entry: LogEntry = {
+      timestamp: new Date().toISOString(),
+      level,
+      message,
+      data
+    };
+
+    const logFile = this.getLogFile();
+    appendFileSync(logFile, JSON.stringify(entry) + '\n');
+
+    // Also log to console if in debug mode
+    if (configManager.getConfig().logging.level === 'debug') {
+      const prefix = `[${level.toUpperCase()}]`;
+      if (data) {
+        console.log(prefix, message, data);
+      } else {
+        console.log(prefix, message);
+      }
+    }
+  }
+
+  debug(message: string, data?: unknown): void {
+    this.log('debug', message, data);
+  }
+
+  info(message: string, data?: unknown): void {
+    this.log('info', message, data);
+  }
+
+  warn(message: string, data?: unknown): void {
+    this.log('warn', message, data);
+  }
+
+  error(message: string, data?: unknown): void {
+    this.log('error', message, data);
+  }
+
+  logHook(hookData: HookData): void {
+    const entry: HookLogEntry = {
+      timestamp: new Date().toISOString(),
+      ...hookData
+    };
+
+    const logFile = this.getLogFile('hooks');
+    appendFileSync(logFile, JSON.stringify(entry) + '\n');
+    
+    this.debug(`Hook logged: ${hookData.hook_event_name}`, {
+      hook: hookData.hook_event_name,
+      tools: 'tool_name' in hookData ? (hookData as PreToolUseHookData | PostToolUseHookData).tool_name : undefined
+    });
+  }
+
+  getLogDirectory(): string {
+    return this.logDir;
+  }
+
+  rotateLogs(): void {
+    this.rotateLogsIfNeeded();
+  }
+
+  getLogStats(): { totalFiles: number; totalSize: number; oldestFile?: string; newestFile?: string } {
+    try {
+      const files = readdirSync(this.logDir)
+        .filter(f => f.endsWith('.jsonl'))
+        .map(f => ({
+          name: f,
+          path: join(this.logDir, f),
+          stats: statSync(join(this.logDir, f))
+        }))
+        .sort((a, b) => a.stats.mtime.getTime() - b.stats.mtime.getTime());
+      
+      const totalSize = files.reduce((sum, f) => sum + f.stats.size, 0);
+      
+      return {
+        totalFiles: files.length,
+        totalSize,
+        oldestFile: files[0]?.name,
+        newestFile: files[files.length - 1]?.name
+      };
+    } catch (error) {
+      return { totalFiles: 0, totalSize: 0 };
+    }
+  }
+}
+
+// Export singleton instance
+export const logger = new Logger();

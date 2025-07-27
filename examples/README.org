@@ -1,0 +1,163 @@
+* Velcro Handler Examples
+
+This directory contains three comprehensive examples demonstrating the different ways to create Velcro handlers for Claude Code hooks.
+
+** Overview
+
+Velcro supports three types of handlers:
+
+1. *External Handlers* - Standalone executables (any language)
+2. *Script Handlers* - JavaScript files without function wrapper  
+3. *Function Handlers* - JavaScript functions that return a function
+
+Each handler type receives the same input format and can produce similar outputs, but they differ in how they're executed and what capabilities they have.
+
+** Input Format
+
+All handlers receive hook data in the following JSON format:
+
+#+begin_src json
+{
+  "session_id": "unique-session-id",
+  "transcript_path": "/path/to/transcript.jsonl",
+  "cwd": "/current/working/directory", 
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Edit",        // Only present for tool-related hooks
+  "tool_input": {             // Tool-specific input data
+    "file_path": "/path/to/file",
+    "old_string": "text to replace",
+    "new_string": "replacement text"
+  },
+  "prompt": "user input"      // Only for UserPromptSubmit hooks
+}
+#+end_src
+
+** Output Format
+
+Handlers can produce output in several ways:
+
+*** Text Output
+Simply print to stdout - this will be shown to the user:
+#+begin_src
+[Info] Operation completed successfully
+#+end_src
+
+*** JSON Response
+For more control, return a JSON object:
+#+begin_src json
+{
+  "decision": "block",
+  "reason": "Operation blocked due to policy"
+}
+#+end_src
+
+*** Exit Codes
+- =0= - Success, operation continues
+- =2= - Block operation (prevents execution)
+- Any other - Error (operation continues with warning)
+
+** Handler Types
+
+*** External Handler (external-handler-example.py)
+
+External handlers are standalone executables that:
+- Read JSON from stdin
+- Write responses to stdout
+- Use exit codes to control flow
+- Can be written in any language
+
+Example usage:
+#+begin_src bash
+velcro handler add \
+  --name security-check \
+  --type external \
+  --command /path/to/external-handler-example.py \
+  --hook PreToolUse PostToolUse
+#+end_src
+
+*** Script Handler (script-handler-example.js)
+
+Script handlers are JavaScript files that:
+- Execute JavaScript code directly (no function wrapper)
+- Have access to global hookData variable
+- Can use require() for modules
+- Return values directly
+- Run in-process (fast execution)
+
+Example usage:
+#+begin_src bash
+velcro handler add \
+  --name js-validator \
+  --type script \
+  --script /path/to/script-handler-example.js \
+  --hook PreToolUse PostToolUse UserPromptSubmit
+#+end_src
+
+*** Function Handler (function-handler-example.js)
+
+Function handlers are JavaScript functions that:
+- Run in-process (fastest execution)
+- Have access to Node.js APIs
+- Can use npm packages
+- Return objects to control behavior
+
+Example usage:
+#+begin_src bash
+velcro handler add \
+  --name code-quality \
+  --type function \
+  --file function-handler-example.js \
+  --hook PreToolUse PostToolUse \
+  --packages lodash validator
+#+end_src
+
+** Hook Events
+
+Common hook events you can intercept:
+
+- =PreToolUse= - Before any tool is executed
+- =PostToolUse= - After tool execution
+- =UserPromptSubmit= - When user submits a prompt
+- =Stop= - When conversation ends
+- =Notification= - System notifications
+
+** Testing Handlers
+
+You can test handlers standalone:
+
+#+begin_src bash
+# Test external handler
+echo '{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":".env"}}' | \
+  ./external-handler-example.py
+
+# Test script handler
+node -e "global.hookData = {hook_event_name:'PreToolUse',tool_name:'Edit',tool_input:{file_path:'test.js'}}; require('./script-handler-example.js')"
+
+# Test function handler with Velcro
+velcro handler test code-quality \
+  --event '{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_path":"test.js","new_string":"console.log(123)"}}'
+#+end_src
+
+** Handler Type Comparison
+
+| Type | Language | Execution | Best For |
+|------|----------|-----------|----------|
+| External | Any | Subprocess | Complex logic, existing tools, any language |
+| Script | JavaScript | In-process | Simple JS files without function wrapper |
+| Function | JavaScript | In-process | Complex JS logic with return function |
+
+** Best Practices
+
+1. *Performance*: Script and Function handlers are fastest (in-process), external handlers have subprocess overhead
+2. *Error Handling*: Always validate input JSON
+3. *Logging*: Use stderr for debug info, stdout for user-facing messages
+4. *Blocking*: Only block operations when necessary, provide clear reasons
+5. *Testing*: Test handlers standalone before adding to Velcro
+
+** Common Use Cases
+
+- *Security*: Block dangerous operations
+- *Auditing*: Log all tool usage
+- *Quality*: Enforce coding standards
+- *Automation*: Add timestamps, headers, etc.
+- *Custom Commands*: Handle special user commands

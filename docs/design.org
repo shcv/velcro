@@ -1,0 +1,679 @@
+#+TITLE: Velcro: Master Hook Interceptor for Claude Code
+#+DATE: [2025-07-23]
+
+* Overview
+
+Velcro is a comprehensive JavaScript/TypeScript project that acts as a master-hook interceptor for Claude Code. The name "Velcro" reflects the system's ability to easily attach and detach handlers to Claude Code's hooks - just like velcro fasteners.
+
+It serves dual purposes:
+1. Intercepts and processes all Claude Code hook events
+2. Acts as an MCP (Model Context Protocol) server to provide advanced hook management capabilities
+
+* Architecture
+
+** System Components
+
+*** 1. Hook Server (Express.js)
+- Runs on configurable port (default: 3010)
+- Accepts hook data via POST endpoints
+- Provides real-time SSE for monitoring
+- Manages hook lifecycle and execution
+
+*** 2. MCP Server
+- Implements Model Context Protocol
+- Provides tools for hook management
+- Enables runtime configuration
+- Supports both stdio and HTTP transports
+
+*** 3. Configuration System
+- JSON-based configuration
+- Multiple config sources (in priority order):
+  1. Environment variables
+  2. Command-line arguments
+  3. Project-specific config (.velcro/config.json)
+  4. User config (~/.config/velcro/config.json)
+  5. System config (/etc/velcro/config.json)
+  6. Default config
+
+*** 4. Logging System
+- XDG-compliant data storage
+- Configurable log levels and filters
+- Structured JSON logging
+- Log rotation and cleanup
+- Query interface for historical data
+
+*** 5. Handler Engine
+- JavaScript function execution
+- Sandboxed environment
+- Async/await support
+- Error handling and recovery
+- Performance monitoring
+
+** Data Flow
+
+#+begin_src mermaid
+graph TD
+    A[Claude Code] -->|Hook Event| B[Hook Submission Script]
+    B -->|POST /hooks| C[Hook Server]
+    C --> D{Handler Engine}
+    D -->|Execute| E[User Handlers]
+    D -->|Log| F[Logging System]
+    E -->|Results| G[Response]
+    
+    H[Claude Code] -->|MCP Connection| I[MCP Server]
+    I -->|Tools| J[Handler Management]
+    I -->|Resources| K[Hook History]
+    I -->|Prompts| L[Handler Templates]
+#+end_src
+
+* Hook Types
+
+** Supported Claude Code Hooks
+1. *PreToolUse* - Before tool execution
+2. *PostToolUse* - After tool execution
+3. *UserPromptSubmit* - When user submits prompt
+4. *Notification* - System notifications
+5. *Stop* - Claude finishes responding
+6. *SubagentStop* - Subagent completes
+7. *PreCompact* - Before context compaction
+
+** Hook Data Structure
+#+begin_src typescript
+interface HookEvent {
+  type: HookType;
+  timestamp: string;
+  sessionId: string;
+  data: {
+    toolName?: string;
+    toolArgs?: any;
+    toolOutput?: any;
+    notification?: string;
+    prompt?: string;
+    // Additional fields based on hook type
+  };
+  metadata: {
+    projectPath?: string;
+    userId?: string;
+    claudeVersion?: string;
+  };
+}
+#+end_src
+
+* MCP Tools (Consolidated)
+
+By default, all tools are enabled. Users can selectively disable tools via the configuration:
+
+#+begin_src json
+{
+  "mcp": {
+    "enabledTools": ["handler", "library", "config", "execute"]
+    // This would disable 'logs' and 'monitor' tools
+  }
+}
+#+end_src
+
+** 1. velcro_handler - Unified Handler Management
+Manages all aspects of hook handlers through a single tool with actions.
+
+#+begin_src typescript
+interface VelcroHandlerParams {
+  action: 'create' | 'list' | 'update' | 'delete' | 'toggle' | 'test';
+  
+  // For 'create' action
+  name?: string;
+  hookTypes?: HookType[];
+  code?: string;
+  enabled?: boolean;
+  priority?: number;
+  
+  // For 'update', 'delete', 'toggle', 'test' actions
+  id?: string;
+  updates?: Partial<Handler>;
+  
+  // For 'test' action
+  testData?: any;
+}
+#+end_src
+
+** 2. velcro_package - Package Management
+NPM proxy that manages packages in Velcro's isolated environment.
+
+#+begin_src typescript
+interface VelcroPackageParams {
+  action: 'install' | 'uninstall' | 'list' | 'update' | 'info' | 'audit';
+  packageName?: string | string[];  // Can install multiple
+  version?: string;
+  options?: {
+    latest?: boolean;      // For update
+    fix?: boolean;         // For audit
+    depth?: number;        // For list
+    versions?: boolean;    // For info
+  };
+}
+#+end_src
+
+** 3. velcro_config - Configuration Management
+Handles all configuration getting, setting, and listing.
+
+#+begin_src typescript
+interface VelcroConfigParams {
+  action: 'get' | 'set' | 'list';
+  key?: string;
+  value?: any;
+  prefix?: string; // For listing by prefix
+}
+#+end_src
+
+** 4. velcro_logs - Logging Operations
+Manages log levels, queries, and maintenance.
+
+#+begin_src typescript
+interface VelcroLogsParams {
+  action: 'query' | 'setLevel' | 'clear';
+  
+  // For 'query'
+  filters?: LogFilter;
+  limit?: number;
+  offset?: number;
+  
+  // For 'setLevel'
+  level?: 'debug' | 'info' | 'warn' | 'error';
+  component?: string;
+  
+  // For 'clear'
+  before?: Date;
+}
+#+end_src
+
+** 5. velcro_monitor - System Monitoring
+Provides insights into system performance and status.
+
+#+begin_src typescript
+interface VelcroMonitorParams {
+  type: 'stats' | 'active' | 'health';
+  detailed?: boolean;
+}
+#+end_src
+
+** 6. velcro_execute - Direct Handler Execution
+Manually triggers handlers for testing or automation.
+
+#+begin_src typescript
+interface VelcroExecuteParams {
+  handlerName: string;
+  eventData: HookEvent;
+  timeout?: number;
+}
+#+end_src
+
+* Configuration Schema
+
+Configuration is auto-created on first run with sensible defaults. The system will:
+1. Create necessary directories (XDG-compliant)
+2. Generate default configuration
+3. Create empty package.json for handler dependencies
+4. Initialize empty handlers directory
+
+Migration support via `velcro config migrate --from <path>` to move existing setups.
+
+#+begin_src typescript
+interface VelcroConfig {
+  // Server configuration
+  server: {
+    port: number;              // Default: 3010
+    host: string;              // Default: 'localhost'
+    apiKey?: string;           // Optional authentication
+  };
+  
+  // MCP configuration
+  mcp: {
+    transport: 'stdio' | 'http';  // Default: 'http' for multiple connections
+    httpPort?: number;            // Default: 3011
+    enableOAuth?: boolean;
+    enabledTools?: string[];      // Default: all tools. Specify tool names without 'velcro_' prefix
+    requireApiKey?: boolean;      // Default: true for non-localhost connections
+  };
+  
+  // Logging configuration
+  logging: {
+    dataDir: string;           // Default: XDG_DATA_HOME/velcro
+    level: LogLevel;
+    maxFiles: number;          // Log rotation
+    maxSize: string;           // e.g., '10MB'
+    filters: LogFilter[];
+    enableConsole: boolean;
+  };
+  
+  // Handler configuration
+  handlers: {
+    timeout: number;           // Default: 30000ms
+    sandboxing: boolean;       // Default: true
+    allowedModules: string[];  // Whitelist for built-in modules
+    packageDir?: string;       // Default: $XDG_DATA_HOME/velcro/node_modules
+    errorBehavior: 'continue' | 'block';  // Default: 'continue' (log and continue)
+  };
+  
+  // Hook filtering
+  hooks: {
+    enabled: HookType[];       // Which hooks to process
+    filters: HookFilter[];     // Pattern-based filtering
+  };
+}
+#+end_src
+
+* Handler System
+
+** Handler Definition
+Handlers are stored as individual JavaScript files in `$XDG_DATA_HOME/velcro/handlers/` with metadata in a companion JSON file. Names must be unique.
+
+#+begin_src typescript
+interface Handler {
+  id: string;
+  name: string;              // Must be unique, used as filename
+  description?: string;
+  hookTypes: HookType[];
+  priority: number;          // Execution order
+  enabled: boolean;
+  code: string;             // JavaScript function as string
+  timeout?: number;
+  created: Date;
+  updated: Date;
+  stats: {
+    executions: number;
+    failures: number;
+    avgDuration: number;
+  };
+}
+#+end_src
+
+File structure:
+- `handlers/my-handler.js` - Handler code
+- `handlers/my-handler.meta.json` - Handler metadata
+
+** Handler Execution Context
+#+begin_src javascript
+// Handler function signature
+async function handler(event, context) {
+  // event: HookEvent data
+  // context: {
+  //   log: (level, message) => void,
+  //   storage: KeyValueStore,
+  //   fetch: (url, options) => Promise<Response>,
+  //   emit: (eventName, data) => void
+  // }
+  
+  // Return value affects hook behavior:
+  // - For PreToolUse: { allow: boolean, reason?: string }
+  // - For others: { success: boolean, data?: any }
+}
+#+end_src
+
+** Package Resolution
+Handlers execute in a sandboxed environment with custom require() that:
+1. First checks Velcro's package directory ($XDG_DATA_HOME/velcro/node_modules)
+2. Only allows whitelisted Node.js built-in modules
+3. Prevents access to the host project's node_modules
+4. Caches loaded modules for performance
+
+#+begin_src javascript
+// Handler can safely require installed packages
+const _ = require('lodash');           // From velcro library install
+const axios = require('axios');         // From velcro library install
+const fs = require('fs').promises;      // Built-in (if whitelisted)
+const local = require('./myfile');      // Error: local files not allowed
+const project = require('../../xyz');   // Error: project access blocked
+#+end_src
+
+* Velcro Command
+
+A single executable with multiple subcommands. The CLI commands mirror the MCP tools functionality, providing two ways to interact with Velcro:
+1. Through MCP tools when connected as an MCP client
+2. Via command line for scripting, automation, and quick management
+
+Both interfaces share the same underlying implementation to ensure consistency.
+
+** velcro serve
+Main server process that runs both hook receiver and MCP server
+
+#+begin_src bash
+velcro serve [options]
+  --config <path>     Config file path
+  --port <number>     Server port (default: 3010)
+  --host <string>     Server host (default: localhost)
+  --stdio             Run MCP server in stdio mode (default: HTTP mode)
+#+end_src
+
+** velcro hook
+Submit hook data from Claude Code to the server. Hook type and data are automatically read from stdin.
+
+#+begin_src bash
+velcro hook [options]
+  --server <url>      Server URL (default: http://localhost:3010)
+  --timeout <ms>      Request timeout (default: 5000)
+  --async             Don't wait for response
+#+end_src
+
+Usage in Claude Code settings:
+#+begin_src json
+{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": ".*",
+      "hooks": [{
+        "type": "command",
+        "command": "velcro hook"
+      }]
+    }]
+  }
+}
+#+end_src
+
+** velcro handler
+Manage hook handlers (mirrors velcro_handler MCP tool)
+
+#+begin_src bash
+velcro handler <action> [options]
+  
+Actions:
+  list                    List all handlers
+  create <name>           Create new handler
+    --hook <type>         Hook type(s) to attach to
+    --file <path>         Load handler code from file
+    --code <string>       Inline handler code
+    --priority <n>        Execution priority (default: 10)
+    --disabled            Create in disabled state
+    
+  show <id|name>          Show handler details
+  update <id|name>        Update handler
+    --name <name>         New name
+    --code <string>       New code
+    --file <path>         Load new code from file
+    --priority <n>        New priority
+    
+  delete <id|name>        Delete handler
+  toggle <id|name>        Toggle enabled/disabled
+  test <id|name>          Test handler with sample data
+    --event <json>        Event data (JSON string or @file.json)
+#+end_src
+
+** velcro package
+NPM proxy for managing handler dependencies in isolated environment
+
+#+begin_src bash
+velcro package <action> [options]
+
+Actions:
+  install <package>       Install package (alias: i, add)
+    --save-exact          Save exact version
+    --registry <url>      Use custom registry
+    
+  uninstall <package>     Remove package (alias: rm, remove)
+  
+  list [query]            List installed packages (alias: ls)
+    --depth <n>           Dependency tree depth
+    --json                JSON output
+    
+  update [package]        Update package(s) (alias: up)
+    --latest              Update to latest version
+    
+  info <package>          Show package details
+    --versions            List all available versions
+    
+  search <query>          Search npm registry
+    --limit <n>           Max results
+    
+  audit                   Security audit
+    --fix                 Auto-fix vulnerabilities
+    
+  clean                   Clean package cache
+  
+  path                    Show packages directory
+
+Internal package location: $XDG_DATA_HOME/velcro/node_modules/
+Package management via: $XDG_DATA_HOME/velcro/package.json
+
+Benefits of isolated package management:
+- Handlers share consistent dependency versions
+- No conflicts with user project dependencies  
+- Easy to audit and update handler dependencies
+- Can be wiped/reinstalled without affecting projects
+- Supports private registries and scoped packages
+#+end_src
+
+Example usage:
+#+begin_src bash
+# Install packages for handlers
+velcro package install lodash
+velcro package install prettier@3.0.0
+velcro package install axios cheerio  # Multiple packages
+
+# Check what's installed
+velcro package list
+
+# Update packages
+velcro package update
+velcro package audit --fix
+
+# Handler can use these:
+// In handler code:
+const _ = require('lodash');
+const prettier = require('prettier');
+#+end_src
+
+** velcro config
+Configuration management (mirrors velcro_config MCP tool)
+
+#+begin_src bash
+velcro config <action> [options]
+
+Actions:
+  list [prefix]           List all settings or by prefix
+  get <key>               Get configuration value
+  set <key> <value>       Set configuration value
+  edit                    Open config in editor
+  path                    Show config file locations
+#+end_src
+
+** velcro logs
+Log management (mirrors velcro_logs MCP tool)
+
+#+begin_src bash
+velcro logs <action> [options]
+
+Actions:
+  query                   Query logs
+    --filter <json>       Filter criteria
+    --limit <n>           Max results (default: 100)
+    --follow              Follow log output
+    
+  level [component]       Get/set log level
+    --set <level>         Set to debug|info|warn|error
+    
+  clear                   Clear old logs
+    --before <date>       Clear logs before date
+#+end_src
+
+** velcro monitor
+System monitoring (mirrors velcro_monitor MCP tool)
+
+#+begin_src bash
+velcro monitor <type> [options]
+
+Types:
+  stats                   Show performance statistics
+    --detailed            Detailed breakdown
+    
+  active                  Show active hooks
+  health                  System health check
+  watch                   Live monitoring dashboard
+#+end_src
+
+** velcro execute
+Execute handlers directly (mirrors velcro_execute MCP tool)
+
+#+begin_src bash
+velcro execute <handler> [options]
+  --event <json>          Event data (JSON string or @file.json)
+  --timeout <ms>          Execution timeout
+#+end_src
+
+** velcro version
+Display version information
+
+** velcro help
+Show help for commands
+
+* CLI Usage Examples
+
+** Quick Start
+#+begin_src bash
+# Start the server
+velcro serve
+
+# In another terminal, create a handler
+velcro handler create format-on-save \
+  --hook PostToolUse \
+  --file ./handlers/formatter.js
+
+# Check handler status
+velcro handler list
+
+# View logs
+velcro logs query --follow
+#+end_src
+
+** Common Workflows
+#+begin_src bash
+# Install packages for handlers to use
+velcro package install prettier
+velcro package install lodash axios  # Multiple packages
+velcro package i cheerio@3.0.0      # Short alias with version
+
+# Update configuration
+velcro config set logging.level debug
+velcro config set server.port 3020
+
+# Test a handler
+velcro handler test format-on-save --event @test-event.json
+
+# Monitor system
+velcro monitor stats --detailed
+velcro monitor watch  # Live dashboard
+
+# Quick handler toggle
+velcro handler toggle my-handler
+#+end_src
+
+* Advanced Features
+
+** 1. Hook Chaining
+- Define execution chains for complex workflows
+- Conditional branching based on results
+- Shared context between chained handlers
+
+** 2. External Integrations
+- Webhook support for external services
+- Event streaming to message queues
+- Integration with monitoring systems
+
+** 3. Performance Optimization
+- Handler caching
+- Async batch processing
+- Connection pooling
+- Resource limits
+
+** 4. Security Features
+- API key authentication
+- Handler sandboxing
+- Module whitelisting
+- Rate limiting
+- Audit logging
+
+** 5. Developer Experience
+- Handler templates library
+- Auto-completion for handler code
+- Real-time debugging interface
+- Performance profiling
+- Test data generation
+
+** 6. Plugin System
+- Custom hook processors
+- Storage backends
+- Authentication providers
+- Transport adapters
+
+* Implementation Plan
+
+** Phase 1: Core Infrastructure
+1. Project setup with TypeScript
+2. Basic Express server
+3. MCP server implementation
+4. Configuration system
+
+** Phase 2: Hook Processing
+1. Hook submission endpoint
+2. Handler engine with sandboxing
+3. Basic handler management tools
+4. Logging system
+
+** Phase 3: Advanced Features
+1. Library loading system
+2. Hook chaining
+3. External integrations
+4. Performance monitoring
+
+** Phase 4: Polish
+1. CLI tools
+2. Documentation
+3. Tests
+4. Examples
+
+* Security Considerations
+
+1. *Input Validation* - Strict validation of all hook data
+2. *Sandboxing* - Handlers run in isolated contexts
+3. *Resource Limits* - CPU, memory, and time limits
+4. *Authentication* - Optional API key for hook submission
+5. *Audit Trail* - Complete logging of all operations
+
+* Example Usage
+
+** Claude Code Hook Configuration
+#+begin_src json
+{
+  "hooks": {
+    "PreToolUse": [{"hooks": [{"type": "command", "command": "velcro hook"}]}]
+  }
+}
+#+end_src
+
+** Handler Example
+#+begin_src javascript
+// Auto-format on file write
+async function autoFormat(event, context) {
+  if (event.data.toolName === 'Write' || event.data.toolName === 'Edit') {
+    const filePath = event.data.toolArgs.file_path;
+    
+    if (filePath.endsWith('.js') || filePath.endsWith('.ts')) {
+      context.log('info', `Formatting ${filePath}`);
+      
+      // Execute prettier after Claude writes
+      context.emit('post-process', {
+        command: 'prettier',
+        args: ['--write', filePath]
+      });
+    }
+  }
+  
+  return { allow: true };
+}
+#+end_src
+
+* Benefits
+
+1. *Centralized Hook Management* - Single source of truth for all hooks
+2. *Dynamic Configuration* - Change behavior without editing files
+3. *Powerful Automation* - Complex workflows with JavaScript
+4. *Observability* - Complete visibility into hook execution
+5. *Extensibility* - Plugin system for custom needs
+6. *Performance* - Optimized for high-throughput scenarios
