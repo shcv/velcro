@@ -120,7 +120,7 @@ export class PackageManager {
       }
 
       return packages;
-    } catch (error) {
+    } catch (_error) {
       // If npm list fails (e.g., no packages), return empty array
       return [];
     }
@@ -145,8 +145,8 @@ export class PackageManager {
         description: pkg.description
       }));
       return packages.slice(0, 10); // Return top 10 results
-    } catch (error) {
-      console.error('Search error:', error);
+    } catch (_error) {
+      console.error('Search error:', _error);
       return [];
     }
   }
@@ -164,7 +164,7 @@ export class PackageManager {
         description: data.description,
         dependencies: data.dependencies
       };
-    } catch (error) {
+    } catch (_error) {
       return null;
     }
   }

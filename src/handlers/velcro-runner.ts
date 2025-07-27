@@ -26,7 +26,7 @@ process.stdin.on('end', async () => {
     const hookData = JSON.parse(inputData);
     
     // Create custom require function
-    const requireForHandler = (packageName: string) => {
+    const requireForHandler = (packageName: string): unknown => {
       const packagePath = packagePaths[packageName];
       
       if (!packagePath) {

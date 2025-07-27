@@ -118,14 +118,14 @@ export function createMCPServer(): Server {
 
   // Handle tool calls
   mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
-    return handleToolCall(request.params.name, request.params.arguments);
+    return await handleToolCall(request.params.name, request.params.arguments);
   });
 
   return mcpServer;
 }
 
 // Handle individual tool calls
-export async function handleToolCall(name: string, args: unknown) {
+export async function handleToolCall(name: string, args: unknown): Promise<{content: Array<{type: string; text: string}>}> {
   if (!args || typeof args !== 'object') {
     throw new Error('Invalid arguments');
   }
@@ -134,7 +134,7 @@ export async function handleToolCall(name: string, args: unknown) {
     case 'hook': {
       const hooksArgs = args as HookToolArgs;
       switch (hooksArgs.action) {
-        case 'list':
+        case 'list': {
           const handlers = configManager.listHandlers();
           return { 
             content: [{
@@ -143,20 +143,26 @@ export async function handleToolCall(name: string, args: unknown) {
                 ? handlers.map(h => {
                     let desc = `${h.name} (${h.type || 'velcro'}, ${h.enabled ? 'enabled' : 'disabled'})`;
                     desc += `\n  Hooks: ${h.hooks.join(', ')}`;
-                    if (h.matcher) desc += `\n  Matcher: ${h.matcher}`;
-                    if (h.type === 'command' && h.command) desc += `\n  Command: ${h.command}`;
-                    if (h.type === 'script' && h.script) desc += `\n  Script: ${h.script}`;
+                    if (h.matcher) {
+                      desc += `\n  Matcher: ${h.matcher}`;
+                    }
+                    if (h.type === 'command' && h.command) {
+                      desc += `\n  Command: ${h.command}`;
+                    }
+                    if (h.type === 'script' && h.script) {
+                      desc += `\n  Script: ${h.script}`;
+                    }
                     return desc;
                   }).join('\n\n')
                 : 'No handlers configured'
             }]
           };
+        }
           
-        case 'add':
+        case 'add': {
           if (!hooksArgs.name || !hooksArgs.hooks) {
             throw new Error('name and hooks are required for add action');
           }
-          
           const handlerType = hooksArgs.type || 'velcro';
           
           // Validate based on type
@@ -184,29 +190,39 @@ export async function handleToolCall(name: string, args: unknown) {
           return {
             content: [{ type: 'text', text: `Handler ${hooksArgs.name} (${handlerType}) added successfully` }]
           };
+        }
           
-        case 'remove':
-          if (!hooksArgs.name) throw new Error('name is required for remove action');
+        case 'remove': {
+          if (!hooksArgs.name) {
+            throw new Error('name is required for remove action');
+          }
           const removed = configManager.removeHandler(hooksArgs.name);
           return {
             content: [{ type: 'text', text: removed ? `Handler ${hooksArgs.name} removed` : `Handler ${hooksArgs.name} not found` }]
           };
+        }
           
-        case 'enable':
-          if (!hooksArgs.name) throw new Error('name is required for enable action');
+        case 'enable': {
+          if (!hooksArgs.name) {
+            throw new Error('name is required for enable action');
+          }
           const enabled = configManager.enableHandler(hooksArgs.name);
           return {
             content: [{ type: 'text', text: enabled ? `Handler ${hooksArgs.name} enabled` : `Handler ${hooksArgs.name} not found` }]
           };
+        }
           
-        case 'disable':
-          if (!hooksArgs.name) throw new Error('name is required for disable action');
+        case 'disable': {
+          if (!hooksArgs.name) {
+            throw new Error('name is required for disable action');
+          }
           const disabled = configManager.disableHandler(hooksArgs.name);
           return {
             content: [{ type: 'text', text: disabled ? `Handler ${hooksArgs.name} disabled` : `Handler ${hooksArgs.name} not found` }]
           };
+        }
           
-        case 'test':
+        case 'test': {
           if (!hooksArgs.name || !hooksArgs.test_data) {
             throw new Error('name and test_data are required for test action');
           }
@@ -227,8 +243,9 @@ export async function handleToolCall(name: string, args: unknown) {
               content: [{ type: 'text', text: `Handler ${hooksArgs.name} failed: ${errorMessage}` }]
             };
           }
+        }
           
-        case 'import':
+        case 'import': {
           try {
             const importedHandlers = ClaudeHandlerImporter.importFromClaudeSettings(hooksArgs.import_path);
             
@@ -255,6 +272,7 @@ export async function handleToolCall(name: string, args: unknown) {
               content: [{ type: 'text', text: `Import failed: ${errorMessage}` }]
             };
           }
+        }
           
         default:
           throw new Error(`Unknown action: ${hooksArgs.action}`);
@@ -284,7 +302,7 @@ export async function handleToolCall(name: string, args: unknown) {
       const packageArgs = args as PackageToolArgs;
       
       switch (packageArgs.command) {
-        case 'install':
+        case 'install': {
           if (!packageArgs.packages || packageArgs.packages.length === 0) {
             throw new Error('packages are required for install command');
           }
@@ -313,8 +331,9 @@ export async function handleToolCall(name: string, args: unknown) {
               content: [{ type: 'text', text: `Failed to install packages: ${errorMessage}` }]
             };
           }
+        }
           
-        case 'list':
+        case 'list': {
           const listScope = packageArgs.scope || 'handler';
           if (listScope === 'handler' && !packageArgs.handler_name) {
             // List all handlers and their packages
@@ -365,8 +384,9 @@ export async function handleToolCall(name: string, args: unknown) {
           return {
             content: [{ type: 'text', text: `Installed packages for ${scopeText}:\n${packageList}` }]
           };
+        }
           
-        case 'search':
+        case 'search': {
           if (!packageArgs.packages || packageArgs.packages.length === 0) {
             throw new Error('package name is required for search command');
           }
@@ -389,8 +409,9 @@ export async function handleToolCall(name: string, args: unknown) {
               content: [{ type: 'text', text: `Search failed: ${errorMessage}` }]
             };
           }
+        }
           
-        case 'info':
+        case 'info': {
           if (!packageArgs.packages || packageArgs.packages.length === 0) {
             throw new Error('package name is required for info command');
           }
@@ -416,6 +437,7 @@ export async function handleToolCall(name: string, args: unknown) {
               content: [{ type: 'text', text: `Failed to get package info: ${errorMessage}` }]
             };
           }
+        }
           
         default:
           throw new Error(`Unknown command: ${packageArgs.command}`);

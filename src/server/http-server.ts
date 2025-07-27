@@ -22,7 +22,7 @@ const oauthProvider = new SimpleOAuthProvider();
 // Map to store active MCP sessions
 const mcpSessions = new Map<string, Server>();
 
-export async function startHTTPServer(options: { port?: number, host?: string } = {}) {
+export async function startHTTPServer(options: { port?: number, host?: string } = {}): Promise<void> {
   const config = configManager.getConfig();
   const port = options.port || config.server.port;
   const host = options.host || config.server.host;
@@ -94,7 +94,7 @@ export async function startHTTPServer(options: { port?: number, host?: string } 
           
           // Log successful output
           if (result.success && result.output) {
-            console.log(`[${handler.name}] ${result.output}`);
+            console.error(`[${handler.name}] ${result.output}`);
           }
           
           // Check for blocking
@@ -234,7 +234,7 @@ export async function startHTTPServer(options: { port?: number, host?: string } 
   const streamableSessions = new Map<string, { server: Server, transport: StreamableHTTPServerTransport }>();
   
   // Streamable HTTP transport handler
-  const mcpHandler = async (req: express.Request, res: express.Response) => {
+  const mcpHandler = async (req: express.Request, res: express.Response): Promise<void> => {
     // Get or create session ID
     const sessionId = req.headers['mcp-session-id'] as string || 
                      req.headers['x-session-id'] as string ||
@@ -252,10 +252,10 @@ export async function startHTTPServer(options: { port?: number, host?: string } 
         sessionIdGenerator: () => sessionId,
         enableJsonResponse: false, // Use SSE streaming
         onsessioninitialized: async (sid) => {
-          console.log(`MCP session initialized: ${sid}`);
+          console.error(`MCP session initialized: ${sid}`);
         },
         onsessionclosed: (sid) => {
-          console.log(`MCP session closed: ${sid}`);
+          console.error(`MCP session closed: ${sid}`);
           streamableSessions.delete(sid);
         }
       });
@@ -284,18 +284,18 @@ export async function startHTTPServer(options: { port?: number, host?: string } 
     // Log security configuration warnings
     logSecurityConfiguration();
     
-    console.log(`\nVelcro server listening on http://${host}:${port}`);
-    console.log('Hook submission endpoint: POST /hooks');
-    console.log('MCP endpoints:');
-    console.log('  - Streamable HTTP: /mcp (recommended)');
-    console.log('  - SSE: GET /sse, POST /messages (legacy)');
+    console.error(`\nVelcro server listening on http://${host}:${port}`);
+    console.error('Hook submission endpoint: POST /hooks');
+    console.error('MCP endpoints:');
+    console.error('  - Streamable HTTP: /mcp (recommended)');
+    console.error('  - SSE: GET /sse, POST /messages (legacy)');
     
     if (config.auth?.enabled) {
-      console.log('\nOAuth endpoints:');
-      console.log('  - Authorization: /oauth/authorize');
-      console.log('  - Token: /oauth/token');
-      console.log('  - Metadata: /.well-known/oauth-authorization-server');
-      console.log(`  - OAuth ${config.auth.required ? 'REQUIRED' : 'optional'} for MCP access`);
+      console.error('\nOAuth endpoints:');
+      console.error('  - Authorization: /oauth/authorize');
+      console.error('  - Token: /oauth/token');
+      console.error('  - Metadata: /.well-known/oauth-authorization-server');
+      console.error(`  - OAuth ${config.auth.required ? 'REQUIRED' : 'optional'} for MCP access`);
     }
   });
 }

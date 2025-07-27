@@ -75,7 +75,7 @@ export class HandlerExecutor {
       // Preserve blockExecution flag
       if (err instanceof Error && 'blockExecution' in err) {
         result.blockExecution = true;
-        result.stderr = (err as any).stderr || errorMessage;
+        result.stderr = (err as unknown as {stderr?: string}).stderr || errorMessage;
       }
       
       return result;
@@ -119,7 +119,9 @@ export class HandlerExecutor {
     const handlerPackages = packageManager.list('handler', handler.name);
     for (const pkg of handlerPackages) {
       const path = packageManager.getPackagePath(pkg.name, 'handler', handler.name);
-      if (path) packagePaths[pkg.name] = path;
+      if (path) {
+        packagePaths[pkg.name] = path;
+      }
     }
     
     // Add global packages
@@ -127,7 +129,9 @@ export class HandlerExecutor {
     for (const pkg of globalPackages) {
       if (!packagePaths[pkg.name]) {
         const path = packageManager.getPackagePath(pkg.name, 'global');
-        if (path) packagePaths[pkg.name] = path;
+        if (path) {
+          packagePaths[pkg.name] = path;
+        }
       }
     }
     
@@ -259,7 +263,7 @@ export class HandlerExecutor {
                 result.output = '';
               }
             }
-          } catch (e) {
+          } catch (_e) {
             // Not JSON, treat as plain text
           }
         }
@@ -380,13 +384,13 @@ export class HandlerExecutor {
       `);
       
       // Build package paths for require
-      const requireForHandler = (packageName: string) => {
+      const requireForHandler = async (packageName: string): Promise<unknown> => {
         const handlerPackages = packageManager.list('handler', handler.name);
         const pkg = handlerPackages.find(p => p.name === packageName);
         if (pkg) {
           const path = packageManager.getPackagePath(pkg.name, 'handler', handler.name);
           if (path) {
-            const createRequire = require('module').createRequire;
+            const { createRequire } = require('module');
             const requireFromPath = createRequire(path + '/');
             return requireFromPath(packageName);
           }
@@ -398,7 +402,7 @@ export class HandlerExecutor {
         if (globalPkg) {
           const path = packageManager.getPackagePath(globalPkg.name, 'global');
           if (path) {
-            const createRequire = require('module').createRequire;
+            const { createRequire } = require('module');
             const requireFromPath = createRequire(path + '/');
             return requireFromPath(packageName);
           }
@@ -408,7 +412,7 @@ export class HandlerExecutor {
       };
       
       // Execute the function and get the result
-      const functionResult = await fn(hookData, console, requireForHandler);
+      const functionResult = await fn(hookData, console, async (name: string) => await requireForHandler(name));
       
       result.response = functionResult;
       result.success = true;
@@ -521,7 +525,7 @@ export class HandlerExecutor {
                 result.output = '';
               }
             }
-          } catch (e) {
+          } catch (_e) {
             // Not JSON, treat as plain text
           }
         }

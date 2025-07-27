@@ -58,7 +58,7 @@ export class SessionManager {
     for (const [sessionId, session] of this.sessions) {
       if (now - session.lastAccess > timeout) {
         this.sessions.delete(sessionId);
-        console.log(`Cleaned up inactive session: ${sessionId}`);
+        console.error(`Cleaned up inactive session: ${sessionId}`);
       }
     }
   }

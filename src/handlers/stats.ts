@@ -47,7 +47,7 @@ export class StatsManager {
   }
 
   recordExecution(handlerName: string, duration: number, success: boolean, error?: string): void {
-    let stats = this.stats.get(handlerName) || {
+    const stats = this.stats.get(handlerName) || {
       executions: 0,
       failures: 0,
       totalDuration: 0,

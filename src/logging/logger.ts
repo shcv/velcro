@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'fs';
+import { appendFileSync, mkdirSync, readdirSync, statSync, unlinkSync, renameSync } from 'fs';
 import { join } from 'path';
 import { HookData, PreToolUseHookData, PostToolUseHookData } from '../types/hooks.js';
 import { configManager } from '../config/index.js';
@@ -69,7 +69,9 @@ class Logger {
 
   private parseSize(sizeStr: string): number {
     const match = sizeStr.match(/^(\d+(?:\.\d+)?)\s*([KMG]?B)?$/i);
-    if (!match) return 10 * 1024 * 1024; // Default 10MB
+    if (!match) {
+      return 10 * 1024 * 1024; // Default 10MB
+    }
     
     const num = parseFloat(match[1]);
     const unit = (match[2] || 'B').toUpperCase();
@@ -96,12 +98,12 @@ class Logger {
         const rotatedPath = filepath.replace('.jsonl', `-${timestamp}.jsonl`);
         
         // Rename the current file
-        const fs = require('fs');
-        fs.renameSync(filepath, rotatedPath);
+        // Use the imported renameSync
+        renameSync(filepath, rotatedPath);
         
         this.info(`Rotated log file ${filepath} to ${rotatedPath} (size: ${stats.size} bytes)`);
       }
-    } catch (error) {
+    } catch (_error) {
       // File doesn't exist yet, that's fine
     }
   }
@@ -155,9 +157,9 @@ class Logger {
     if (configManager.getConfig().logging.level === 'debug') {
       const prefix = `[${level.toUpperCase()}]`;
       if (data) {
-        console.log(prefix, message, data);
+        console.error(prefix, message, data);
       } else {
-        console.log(prefix, message);
+        console.error(prefix, message);
       }
     }
   }
@@ -220,7 +222,7 @@ class Logger {
         oldestFile: files[0]?.name,
         newestFile: files[files.length - 1]?.name
       };
-    } catch (error) {
+    } catch (_error) {
       return { totalFiles: 0, totalSize: 0 };
     }
   }

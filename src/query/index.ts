@@ -66,8 +66,8 @@ export class HookQuery {
           }
           
           allHooks.push(hook);
-        } catch (error) {
-          console.error('Failed to parse hook:', error);
+        } catch (_error) {
+          console.error('Failed to parse hook:', _error);
         }
       }
     }

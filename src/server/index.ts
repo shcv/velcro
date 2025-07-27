@@ -2,7 +2,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { createMCPServer } from './mcp-handlers.js';
 
 // Start server in stdio mode
-export async function startServer(options: { port?: number, host?: string, stdio?: boolean } = {}) {
+export async function startServer(options: { port?: number, host?: string, stdio?: boolean } = {}): Promise<void> {
   if (!options.stdio) {
     throw new Error('This function only supports stdio mode. Use startHTTPServer for HTTP mode.');
   }
